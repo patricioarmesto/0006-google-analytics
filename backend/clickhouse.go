@@ -118,3 +118,95 @@ func (ch *ClickHouse) exec(ctx context.Context, body []byte, out any) error {
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
+
+type DayStat struct {
+	Day   string `json:"day"`
+	Views uint64 `json:"views"`
+}
+
+type PageStat struct {
+	Page  string `json:"page"`
+	Views uint64 `json:"views"`
+}
+
+type FunnelStat struct {
+	Pageviews    uint64 `json:"pageviews"`
+	Clicks       uint64 `json:"clicks"`
+	CustomEvents uint64 `json:"custom_events"`
+}
+
+type RealtimeStat struct {
+	Events uint64  `json:"events"`
+	Latest []Event `json:"latest"`
+}
+
+func (ch *ClickHouse) PageviewsByDay(ctx context.Context) ([]DayStat, error) {
+	q := `SELECT toString(toDate(timestamp)) AS day, count() AS views
+		FROM default.events GROUP BY day ORDER BY day FORMAT JSON`
+	var out struct {
+		Data []DayStat `json:"data"`
+	}
+	if err := ch.exec(ctx, []byte(q), &out); err != nil {
+		return nil, err
+	}
+	return out.Data, nil
+}
+
+func (ch *ClickHouse) TopPages(ctx context.Context) ([]PageStat, error) {
+	q := `SELECT page, count() AS views FROM default.events
+		GROUP BY page ORDER BY views DESC LIMIT 10 FORMAT JSON`
+	var out struct {
+		Data []PageStat `json:"data"`
+	}
+	if err := ch.exec(ctx, []byte(q), &out); err != nil {
+		return nil, err
+	}
+	return out.Data, nil
+}
+
+// El funnel cuenta sesiones únicas por paso y exige orden temporal estricto
+// dentro de la misma sesión. minIf con un timestamp 0 como centinela evita
+// contar un click de una sesión que nunca hizo pageview.
+func (ch *ClickHouse) Funnel(ctx context.Context) (FunnelStat, error) {
+	q := `SELECT
+			uniqExactIf(session_id, pv > toDateTime64('1970-01-01 00:00:00.000', 3)) AS pageviews,
+			uniqExactIf(session_id, pv > toDateTime64('1970-01-01 00:00:00.000', 3)
+				AND cl > pv) AS clicks,
+			uniqExactIf(session_id, pv > toDateTime64('1970-01-01 00:00:00.000', 3)
+				AND cl > pv AND ce > cl) AS custom_events
+		FROM (
+			SELECT session_id,
+				minIf(timestamp, type = 'pageview') AS pv,
+				minIf(timestamp, type = 'click') AS cl,
+				minIf(timestamp, type = 'custom_event') AS ce
+			FROM default.events GROUP BY session_id
+		) FORMAT JSON`
+	var out struct {
+		Data []FunnelStat `json:"data"`
+	}
+	if err := ch.exec(ctx, []byte(q), &out); err != nil {
+		return FunnelStat{}, err
+	}
+	if len(out.Data) == 0 {
+		return FunnelStat{}, nil
+	}
+	return out.Data[0], nil
+}
+
+func (ch *ClickHouse) Realtime(ctx context.Context) (RealtimeStat, error) {
+	q := `SELECT count() AS events FROM default.events
+		WHERE timestamp >= now() - INTERVAL 5 MINUTE FORMAT JSON`
+	var out struct {
+		Data []struct {
+			Events uint64 `json:"events"`
+		} `json:"data"`
+	}
+	if err := ch.exec(ctx, []byte(q), &out); err != nil {
+		return RealtimeStat{}, err
+	}
+	result := RealtimeStat{Latest: []Event{}}
+	if len(out.Data) > 0 {
+		result.Events = out.Data[0].Events
+	}
+	return result, nil
+}
