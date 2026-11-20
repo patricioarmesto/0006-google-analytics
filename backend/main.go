@@ -29,13 +29,23 @@ func newKafkaWriter(brokers []string) *kafka.Writer {
 	}
 }
 
+// newClickHouseFromEnv arma el cliente HTTP con las credenciales del usuario
+// de aplicación creado en clickhouse/users.xml.
+func newClickHouseFromEnv() *ClickHouse {
+	return NewClickHouse(
+		env("CLICKHOUSE_URL", "http://clickhouse:8123"),
+		env("CLICKHOUSE_USER", ""),
+		env("CLICKHOUSE_PASSWORD", ""),
+	)
+}
+
 func main() {
 	mode := flag.String("mode", "api", "api o consumer")
 	flag.Parse()
 
 	brokers := strings.Split(env("KAFKA_BROKERS", "kafka:9092"), ",")
 	topic := env("KAFKA_TOPIC", "analytics.events")
-	ch := NewClickHouse(env("CLICKHOUSE_URL", "http://clickhouse:8123"), "", "")
+	ch := newClickHouseFromEnv()
 
 	if *mode == "consumer" {
 		log.Println("modo consumer: esperando eventos de", topic)

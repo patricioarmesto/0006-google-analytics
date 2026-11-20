@@ -1,0 +1,18 @@
+<clickhouse>
+  <!--
+    La imagen stock limita el usuario `default` a loopback (127.0.0.1/::1) y
+    rechaza los requests HTTP que llegan desde otros contenedores. Este usuario
+    de aplicación existe para el collector/API y el consumer, que corren fuera
+    del host de ClickHouse. El healthcheck local sigue usando `default`.
+  -->
+  <users>
+    <analytics>
+      <password>analytics</password>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <profile>default</profile>
+      <quota>default</quota>
+    </analytics>
+  </users>
+</clickhouse>
