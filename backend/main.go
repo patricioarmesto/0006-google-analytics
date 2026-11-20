@@ -20,6 +20,15 @@ func env(key, fallback string) string {
 	return fallback
 }
 
+// newKafkaWriter construye el producer usado por el collector. El tópico se
+// define en cada mensaje (ver Collector.Collect), no acá.
+func newKafkaWriter(brokers []string) *kafka.Writer {
+	return &kafka.Writer{
+		Addr:     kafka.TCP(brokers...),
+		Balancer: &kafka.Hash{},
+	}
+}
+
 func main() {
 	mode := flag.String("mode", "api", "api o consumer")
 	flag.Parse()
@@ -40,11 +49,7 @@ func main() {
 	// conectan acá; el consumer es el único que habla con ClickHouse para
 	// escribir, api sólo lee.
 	redisClient := redis.NewClient(&redis.Options{Addr: env("REDIS_ADDR", "redis:6379")})
-	writer := &kafka.Writer{
-		Addr:     kafka.TCP(brokers...),
-		Topic:    topic,
-		Balancer: &kafka.Hash{},
-	}
+	writer := newKafkaWriter(brokers)
 	defer writer.Close()
 	defer redisClient.Close()
 
