@@ -165,20 +165,23 @@ func (ch *ClickHouse) TopPages(ctx context.Context) ([]PageStat, error) {
 }
 
 // El funnel cuenta sesiones únicas por paso y exige orden temporal estricto
-// dentro de la misma sesión. minIf con un timestamp 0 como centinela evita
-// contar un click de una sesión que nunca hizo pageview.
+// dentro de la misma sesión: pageview -> click -> custom_event. Busca CUALQUIER
+// triple en ese orden, no que el primer evento de cada tipo esté ordenado: en
+// el demo es fácil mandar un custom event antes del click y otro después, y esa
+// sesión SÍ completó el embudo. Con minIf el primer custom ganaba siempre y la
+// sesión quedaba descartada para siempre. arrayExists anidado sobre los arrays
+// reales evita centinelas (un click sin pageview nunca cuenta) y conserva
+// DateTime64(3), a diferencia de sequenceMatch (exige DateTime, sin ms).
 func (ch *ClickHouse) Funnel(ctx context.Context) (FunnelStat, error) {
 	q := `SELECT
-			uniqExactIf(session_id, pv > toDateTime64('1970-01-01 00:00:00.000', 3)) AS pageviews,
-			uniqExactIf(session_id, pv > toDateTime64('1970-01-01 00:00:00.000', 3)
-				AND cl > pv) AS clicks,
-			uniqExactIf(session_id, pv > toDateTime64('1970-01-01 00:00:00.000', 3)
-				AND cl > pv AND ce > cl) AS custom_events
+			uniqExactIf(session_id, length(pvs) > 0) AS pageviews,
+			uniqExactIf(session_id, arrayExists(pv -> arrayExists(cl -> cl > pv, cls), pvs)) AS clicks,
+			uniqExactIf(session_id, arrayExists(pv -> arrayExists(cl -> cl > pv AND arrayExists(ce -> ce > cl, ces), cls), pvs)) AS custom_events
 		FROM (
 			SELECT session_id,
-				minIf(timestamp, type = 'pageview') AS pv,
-				minIf(timestamp, type = 'click') AS cl,
-				minIf(timestamp, type = 'custom_event') AS ce
+				groupArrayIf(timestamp, type = 'pageview') AS pvs,
+				groupArrayIf(timestamp, type = 'click') AS cls,
+				groupArrayIf(timestamp, type = 'custom_event') AS ces
 			FROM default.events GROUP BY session_id
 		) FORMAT JSON`
 	var out struct {
