@@ -2,14 +2,30 @@ import { useState } from 'react'
 import { BreakIt } from './BreakIt'
 import { Dashboard } from './Dashboard'
 import { DemoSite } from './DemoSite'
+import { sendBurst, type BurstProgress } from './analytics'
 import type { Page } from './analytics'
 
 type Tab = 'demo' | 'dashboard' | 'romper'
+
+// El progreso del burst vive en App porque App nunca se desmonta. Si viviera
+// en BreakIt, al cambiar de tab el componente se crearía de nuevo con 0 y
+// parecería que el envío se perdió, aunque los 10.000 POST sigan en vuelo.
+const emptyBurst: BurstProgress = { done: 0, accepted: 0, duplicate: 0, error: 0 }
 
 export function App() {
   const [tab, setTab] = useState<Tab>('demo')
   const [refreshKey, setRefreshKey] = useState(0)
   const [currentPage, setCurrentPage] = useState<Page>('/')
+  const [progress, setProgress] = useState<BurstProgress>(emptyBurst)
+  const [running, setRunning] = useState(false)
+
+  async function runBurst() {
+    setRunning(true)
+    setProgress(emptyBurst)
+    await sendBurst('/productos', setProgress)
+    setRunning(false)
+    setRefreshKey((k) => k + 1)
+  }
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'demo', label: 'Sitio demo' },
@@ -43,7 +59,9 @@ export function App() {
 
       {tab === 'demo' && <DemoSite onViewChange={setCurrentPage} />}
       {tab === 'dashboard' && <Dashboard refreshKey={refreshKey} />}
-      {tab === 'romper' && <BreakIt onBurst={() => setRefreshKey((k) => k + 1)} />}
+      {tab === 'romper' && (
+        <BreakIt progress={progress} running={running} onRun={() => void runBurst()} />
+      )}
     </main>
   )
 }

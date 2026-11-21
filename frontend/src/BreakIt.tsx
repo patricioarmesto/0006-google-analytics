@@ -1,20 +1,16 @@
-import { useState } from 'react'
-import { sendBurst, type BurstProgress } from './analytics'
+import type { BurstProgress } from './analytics'
 
-const empty: BurstProgress = { done: 0, accepted: 0, duplicate: 0, error: 0 }
-
-export function BreakIt({ onBurst }: { onBurst: () => void }) {
-  const [progress, setProgress] = useState<BurstProgress>(empty)
-  const [running, setRunning] = useState(false)
-
-  async function run() {
-    setRunning(true)
-    setProgress(empty)
-    await sendBurst('/productos', setProgress)
-    setRunning(false)
-    onBurst()
-  }
-
+// Componente presentacional: el estado del burst vive en App para que el
+// contador siga visible aunque el usuario cambie de tab a mitad del envío.
+export function BreakIt({
+  progress,
+  running,
+  onRun,
+}: {
+  progress: BurstProgress
+  running: boolean
+  onRun: () => void
+}) {
   return (
     <section className="grid gap-6 lg:grid-cols-2">
       <div className="rounded-2xl border border-amber-800/60 bg-amber-950/30 p-6">
@@ -25,7 +21,7 @@ export function BreakIt({ onBurst }: { onBurst: () => void }) {
         </p>
         <button
           disabled={running}
-          onClick={() => void run()}
+          onClick={onRun}
           className="mt-5 rounded-lg bg-amber-500 px-5 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
         >
           {running ? `Enviando… ${progress.done}/10000` : 'Mandar 10.000 eventos de golpe'}
