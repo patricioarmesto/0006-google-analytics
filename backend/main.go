@@ -24,8 +24,13 @@ func env(key, fallback string) string {
 // define en cada mensaje (ver Collector.Collect), no acá.
 func newKafkaWriter(brokers []string) *kafka.Writer {
 	return &kafka.Writer{
-		Addr:     kafka.TCP(brokers...),
-		Balancer: &kafka.Hash{},
+		Addr: kafka.TCP(brokers...),
+		// El default de kafka-go es 1 s: con poca concurrencia (el navegador
+		// abre ~6 conexiones) cada request esperaría ese segundo a completar
+		// el batch de 100. Con 10 ms el collector sigue siendo rápido y el
+		// polling del dashboard no queda encolado detrás del burst.
+		BatchTimeout: 10 * time.Millisecond,
+		Balancer:     &kafka.Hash{},
 	}
 }
 

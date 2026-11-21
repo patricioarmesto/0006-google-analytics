@@ -42,6 +42,7 @@ export type BurstProgress = { done: number; accepted: number; duplicate: number;
 // 10.000 requests de golpe pueden ahogar al navegador y al collector. Con
 // ~100 en vuelo el pico es constante y se ve el efecto real: dedup en Redis,
 // batches de 1000 en el consumer y, si se cae ClickHouse, reintentos en logs.
+// El writer de Kafka usa BatchTimeout corto para que cada POST no espere 1 s.
 export async function sendBurst(
   page: Page,
   onProgress: (p: BurstProgress) => void,
